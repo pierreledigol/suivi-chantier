@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+chantier.db
+active.json
+chantier_export.csv
+.env
+venv/
+instance/
