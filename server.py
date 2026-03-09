@@ -1,14 +1,12 @@
 """
 Serveur Flask — Suivi de Chantier Cuves
 ========================================
-Version production (déploiement Render)
+Version production (déploiement Render, SQLite)
 
-Authentification :
-  - CLIENT_PASSWORD : mot de passe pour le client (accès interface)
-  - ADMIN_TOKEN     : token secret pour toi (téléchargement CSV)
-
-Ces valeurs sont définies comme variables d'environnement sur Render.
-Ne jamais les écrire en dur ici.
+Variables d'environnement sur Render :
+  - CLIENT_PASSWORD : mot de passe pour le client
+  - ADMIN_TOKEN     : token secret pour télécharger le CSV
+  - SECRET_KEY      : clé secrète Flask (chaîne aléatoire)
 """
 
 from flask import Flask, jsonify, request, send_from_directory, Response, session, redirect
@@ -24,19 +22,16 @@ app = Flask(__name__, static_folder='.')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CONFIGURATION (variables d'environnement)
+# CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Mot de passe client pour accéder à l'interface
 CLIENT_PASSWORD = os.environ.get('CLIENT_PASSWORD', 'chantier2024')
+ADMIN_TOKEN     = os.environ.get('ADMIN_TOKEN', 'mon-token-secret')
 
-# Token admin pour télécharger le CSV (toi seul)
-ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN', 'mon-token-secret')
-
-# Chemins des fichiers de données
-# Sur Render, utiliser /tmp pour les fichiers temporaires
-# (attention : /tmp est effacé au redémarrage sur les plans gratuits)
-DATA_DIR    = os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__)))
+# Sur Render, le dossier projet est en lecture seule → on écrit dans /tmp
+# En local, on utilise le dossier du script
+IS_RENDER   = bool(os.environ.get('RENDER', ''))
+DATA_DIR    = '/tmp' if IS_RENDER else os.path.dirname(os.path.abspath(__file__))
 DB_FILE     = os.path.join(DATA_DIR, 'chantier.db')
 ACTIVE_FILE = os.path.join(DATA_DIR, 'active.json')
 
@@ -45,7 +40,6 @@ ACTIVE_FILE = os.path.join(DATA_DIR, 'active.json')
 # ══════════════════════════════════════════════════════════════════════════════
 
 def login_required(f):
-    """Décorateur : redirige vers /login si pas connecté."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get('logged_in'):
@@ -57,7 +51,6 @@ def login_required(f):
 
 
 def admin_required(f):
-    """Décorateur : vérifie le token admin dans le header ou param."""
     @wraps(f)
     def decorated(*args, **kwargs):
         token = request.args.get('token') or request.headers.get('X-Admin-Token', '')
@@ -65,6 +58,16 @@ def admin_required(f):
             return Response('Token invalide', status=403)
         return f(*args, **kwargs)
     return decorated
+
+
+@app.route('/healthz')
+def healthz():
+    """Health check pour Render — initialise aussi la DB au premier appel."""
+    try:
+        init_db()
+        return 'OK', 200
+    except Exception as e:
+        return str(e), 500
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -194,7 +197,8 @@ def init_db():
     conn.commit()
     conn.close()
 
-init_db()
+# init_db() est appelé au premier accès, pas au chargement du module
+# (évite les erreurs de permissions au démarrage gunicorn --preload)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPERS
@@ -269,7 +273,6 @@ def db_load_all_cycles():
 
 
 def db_export_csv():
-    """Génère le contenu CSV complet depuis SQLite (pour téléchargement admin)."""
     conn = sqlite3.connect(DB_FILE)
     c    = conn.cursor()
     c.execute('''
@@ -284,16 +287,16 @@ def db_export_csv():
 
     output = io.StringIO()
     writer = csv.writer(output, delimiter=';')
-    writer.writerow(['Date', 'Cuves', 'ID Cycle', 'Nb cuves', 'Phase', 'Durée (HH:MM:SS)', 'Durée (ms)', 'Notes'])
+    writer.writerow(['Date', 'Cuves', 'ID Cycle', 'Nb cuves', 'Phase',
+                     'Durée (HH:MM:SS)', 'Durée (ms)', 'Notes'])
     prev_id = None
     for date, cuves_json, cycle_id, nb, phase, hms, ms, notes in rows:
         cuves = ', '.join(json.loads(cuves_json))
-        writer.writerow([date, cuves, cycle_id, nb, phase, hms, ms, notes or ''])
         if prev_id and prev_id != cycle_id:
-            writer.writerow([])  # séparateur entre cycles
+            writer.writerow([])
+        writer.writerow([date, cuves, cycle_id, nb, phase, hms, ms, notes or ''])
         prev_id = cycle_id
 
-    # Ligne total par cycle
     output.seek(0)
     return output.getvalue()
 
@@ -347,6 +350,7 @@ def delete_active():
 @app.route('/')
 @login_required
 def index():
+    init_db()
     return send_from_directory('.', 'index.html')
 
 
@@ -387,7 +391,11 @@ def delete_cycle():
     cycle_id = request.json.get('cycle_id')
     if not cycle_id:
         return jsonify({'ok': False, 'error': 'cycle_id manquant'}), 400
-    cycle_id = str(cycle_id)
+    db_delete_cycle(str(cycle_id))
+    return jsonify({'ok': True})
+
+
+def db_delete_cycle(cycle_id):
     conn = sqlite3.connect(DB_FILE)
     c    = conn.cursor()
     c.execute('DELETE FROM cycles     WHERE cycle_id = ?', (cycle_id,))
@@ -395,17 +403,11 @@ def delete_cycle():
     c.execute('DELETE FROM cycles_raw WHERE cycle_id = ?', (cycle_id,))
     conn.commit()
     conn.close()
-    return jsonify({'ok': True})
 
 
 @app.route('/admin/export_csv')
 @admin_required
 def export_csv():
-    """
-    Route réservée à l'admin (toi).
-    Accès : https://ton-app.onrender.com/admin/export_csv?token=TON_TOKEN_SECRET
-    Télécharge le CSV complet de tous les cycles.
-    """
     content  = db_export_csv()
     filename = f"chantier_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return Response(
@@ -420,12 +422,10 @@ def export_csv():
 # ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port  = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
     print("=" * 60)
     print("  SUIVI CHANTIER — Serveur démarré")
-    print(f"  URL    : http://localhost:{port}")
-    print(f"  DB     : {DB_FILE}")
-    print(f"  Token  : {ADMIN_TOKEN}")
+    print(f"  URL : http://localhost:{port}")
     print("=" * 60)
     app.run(host='0.0.0.0', port=port, debug=debug)
