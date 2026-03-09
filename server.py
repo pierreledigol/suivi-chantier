@@ -18,7 +18,7 @@ import csv
 import io
 from datetime import datetime, timedelta
 
-app = Flask(__name__, static_folder='.')
+app = Flask(__name__, static_folder=None)  # On gère tout manuellement
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
 
 # ══════════════════════════════════════════════════════════════════════════════
