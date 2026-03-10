@@ -122,7 +122,7 @@
 
   /* ── RESPONSIVE MOBILE ── */
   @media (max-width: 640px) {
-    body { overflow: hidden; }
+    body { overflow-y: auto; }
 
     #sidebar {
       position: fixed;
@@ -135,21 +135,48 @@
       transform: translateX(0);
     }
     #sidebar-close { display: block; }
-    #sidebar-toggle { display: flex; }
+
+    /* Bouton ARCHIVES sous la topbar, pleine largeur */
+    #sidebar-toggle {
+      display: flex;
+      position: static;
+      width: 100%;
+      border-radius: 0;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      justify-content: center;
+      padding: 10px 16px;
+      font-size: 12px;
+      background: var(--surface);
+    }
 
     #main {
       width: 100%;
       margin-left: 0 !important;
+      height: auto;
+      min-height: 100vh;
+      overflow: visible;
     }
 
     #topbar {
       justify-content: center;
-      padding-left: 16px;
-      padding-right: 16px;
-      position: relative;
+      padding: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--bg);
     }
     #topbar h1 {
       text-align: center;
+    }
+
+    #content {
+      justify-content: flex-start;
+      padding: 24px 16px 80px;
+      overflow: visible;
+      height: auto;
     }
   }
 
@@ -628,11 +655,6 @@
 <!-- OVERLAY mobile -->
 <div id="sidebar-overlay" onclick="closeSidebar()"></div>
 
-<!-- BOUTON TOGGLE mobile -->
-<button id="sidebar-toggle" onclick="openSidebar()">
-  ☰ &nbsp;ARCHIVES
-</button>
-
 <!-- SIDEBAR -->
 <div id="sidebar">
   <div id="sidebar-header">
@@ -653,6 +675,10 @@
     <h1>SUIVI CHANTIER</h1>
     <span class="phase-badge" id="phase-badge" style="display:none"></span>
   </div>
+  <!-- BOUTON ARCHIVES — visible uniquement sur mobile, sous la topbar -->
+  <button id="sidebar-toggle" onclick="openSidebar()">
+    ☰ &nbsp;ARCHIVES
+  </button>
 
   <!-- INTERRUPTED BANNER -->
   <div id="interrupted-banner">
@@ -804,47 +830,101 @@ function closeSidebar() {
   document.getElementById('sidebar-toggle').style.display = 'flex';
 }
 
+// ─────────────────────────────────────────────
+// LOCALSTORAGE — sauvegarde locale du cycle actif
+// Protège contre la mise en veille du serveur Render
+// ─────────────────────────────────────────────
+const LS_KEY = 'chantier_active_cycle';
+
+function lsSave(active) {
+  try {
+    if (active) localStorage.setItem(LS_KEY, JSON.stringify(active));
+    else localStorage.removeItem(LS_KEY);
+  } catch(e) {}
+}
+
+function lsLoad() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function lsClear() {
+  try { localStorage.removeItem(LS_KEY); } catch(e) {}
+}
+
+function restoreChronos(ac) {
+  // Recalcule le temps écoulé pour les chronos en cours
+  // (au cas où le serveur s'est endormi pendant qu'un chrono tournait)
+  const now = Date.now();
+  for (const key in ac.chronos) {
+    const ch = ac.chronos[key];
+    if (!ch.paused && ch.start > 0) {
+      const extra = now - ch.start;
+      ch.elapsed += Math.max(0, extra);
+      ch.start    = now;
+    }
+  }
+}
+
+function restoreChronoDisplay(ac) {
+  let chronoKey = null, chronoLabel = '';
+  if (ac.phase === 'TRAJET_ALLER') {
+    chronoKey = 'TRAJET_ALLER'; chronoLabel = 'RÉCUPÉRATION CUVE';
+  } else if (ac.phase === 'TRAJET_RETOUR') {
+    chronoKey = 'TRAJET_RETOUR'; chronoLabel = 'LIVRAISON CUVE';
+  } else if (ac.phase === 'ATELIER' && ac.subPhase?.status === 'REPAIR') {
+    const idx = ac.subPhase.cuveIdx;
+    chronoKey  = 'repair_' + idx;
+    chronoLabel = 'RÉPARATION #' + ac.cuves[idx]?.num;
+  }
+  if (chronoKey && ac.chronos[chronoKey]) {
+    activeChronoKey = chronoKey;
+    setChronoLabel(chronoLabel);
+    if (!ac.chronos[chronoKey].paused) {
+      startChronoTick();
+    } else {
+      renderChronoBar();
+      document.getElementById('chrono-bar').classList.add('visible');
+    }
+  }
+}
+
 async function loadState() {
   try {
     const r = await fetch('/api/data');
     const d = await r.json();
     state.cycles = d.cycles || [];
-    state.active = d.active_cycle || null;
 
-    // Restaurer l'affichage du chrono selon la phase active
-    const banner = document.getElementById('interrupted-banner');
+    const serverActive = d.active_cycle || null;
+    const localActive  = lsLoad();
+
+    if (serverActive) {
+      // Le serveur a un cycle actif → on l'utilise
+      state.active = serverActive;
+      lsSave(serverActive); // synchroniser localStorage
+    } else if (localActive) {
+      // Serveur vide (endormi/redémarré) mais localStorage a le cycle
+      // → recalculer les chronos et renvoyer au serveur
+      restoreChronos(localActive);
+      state.active = localActive;
+      // Remettre sur le serveur
+      try {
+        await fetch('/api/save_active', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({active_cycle: localActive})
+        });
+      } catch(e) {}
+      console.log('[RECOVERY] Cycle restauré depuis localStorage');
+    } else {
+      state.active = null;
+    }
+
     if (state.active && state.active.chronos) {
-      const ac = state.active;
-
-      // Déterminer quelle clé de chrono et quel label afficher
-      let chronoKey   = null;
-      let chronoLabel = '';
-      if (ac.phase === 'TRAJET_ALLER') {
-        chronoKey   = 'TRAJET_ALLER';
-        chronoLabel = 'RÉCUPÉRATION CUVE';
-      } else if (ac.phase === 'TRAJET_RETOUR') {
-        chronoKey   = 'TRAJET_RETOUR';
-        chronoLabel = 'LIVRAISON CUVE';
-      } else if (ac.phase === 'ATELIER' && ac.subPhase?.status === 'REPAIR') {
-        const idx   = ac.subPhase.cuveIdx;
-        chronoKey   = 'repair_' + idx;
-        chronoLabel = 'RÉPARATION #' + ac.cuves[idx]?.num;
-      }
-
-      if (chronoKey && ac.chronos[chronoKey]) {
-        activeChronoKey = chronoKey;
-        setChronoLabel(chronoLabel);
-
-        if (!ac.chronos[chronoKey].paused) {
-          // Chrono en cours (y compris après redémarrage serveur) : relancer le tick
-          startChronoTick();
-        } else {
-          // Chrono en pause : afficher la barre figée sans ticker
-          renderChronoBar();
-          document.getElementById('chrono-bar').classList.add('visible');
-        }
-      }
-      banner.classList.remove('visible');
+      restoreChronoDisplay(state.active);
+      document.getElementById('interrupted-banner').classList.remove('visible');
     }
   } catch(e) { console.error('loadState error:', e); }
   renderArchives();
@@ -859,7 +939,9 @@ function startChronoTick() {
 }
 
 async function saveState() {
-  // Sauvegarde uniquement le cycle actif (les cycles archivés sont dans SQLite)
+  // Sauvegarde dans localStorage EN PREMIER (instantané, résiste au sommeil serveur)
+  lsSave(state.active);
+  // Puis sur le serveur
   try {
     await fetch('/api/save_active', {
       method: 'POST',
@@ -870,7 +952,7 @@ async function saveState() {
 }
 
 async function archiveCycle(cycle) {
-  // Envoie le cycle terminé à SQLite via une route dédiée
+  lsClear(); // Effacer localStorage — cycle terminé
   try {
     await fetch('/api/archive_cycle', {
       method: 'POST',
@@ -1330,6 +1412,7 @@ function annulerCycle() {
     saisieNb      = 0;
     saisieCuves   = [];
     saisieEditIdx = -1;
+    lsClear(); // Effacer localStorage
     saveState();
     renderContent();
   });
