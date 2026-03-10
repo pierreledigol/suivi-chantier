@@ -44,11 +44,16 @@
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
+    transition: transform 0.3s ease;
+    z-index: 100;
   }
 
   #sidebar-header {
     padding: 24px 20px 16px;
     border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
 
   #sidebar-header h2 {
@@ -65,6 +70,17 @@
     margin-top: 4px;
   }
 
+  #sidebar-close {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+  }
+
   #archives-list {
     flex: 1;
     overflow-y: auto;
@@ -73,6 +89,69 @@
 
   #archives-list::-webkit-scrollbar { width: 4px; }
   #archives-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Bouton flottant pour ouvrir la sidebar sur mobile */
+  #sidebar-toggle {
+    display: none;
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 200;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    padding: 8px 12px;
+    cursor: pointer;
+    gap: 6px;
+    align-items: center;
+  }
+
+  /* Overlay sombre derrière la sidebar ouverte */
+  #sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 99;
+  }
+  #sidebar-overlay.visible { display: block; }
+
+  /* ── RESPONSIVE MOBILE ── */
+  @media (max-width: 640px) {
+    body { overflow: hidden; }
+
+    #sidebar {
+      position: fixed;
+      top: 0; left: 0;
+      height: 100vh;
+      transform: translateX(-100%);
+      box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+    }
+    #sidebar.open {
+      transform: translateX(0);
+    }
+    #sidebar-close { display: block; }
+    #sidebar-toggle { display: flex; }
+
+    #main {
+      width: 100%;
+      margin-left: 0 !important;
+    }
+
+    #topbar {
+      justify-content: center;
+      padding-left: 16px;
+      padding-right: 16px;
+      position: relative;
+    }
+    #topbar h1 {
+      text-align: center;
+    }
+  }
 
   .archive-item {
     background: var(--surface2);
@@ -546,11 +625,22 @@
 
 <div class="grid-bg"></div>
 
+<!-- OVERLAY mobile -->
+<div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<!-- BOUTON TOGGLE mobile -->
+<button id="sidebar-toggle" onclick="openSidebar()">
+  ☰ &nbsp;ARCHIVES
+</button>
+
 <!-- SIDEBAR -->
 <div id="sidebar">
   <div id="sidebar-header">
-    <h2>ARCHIVES</h2>
-    <p>CYCLES TERMINÉS</p>
+    <div>
+      <h2>ARCHIVES</h2>
+      <p>CYCLES TERMINÉS</p>
+    </div>
+    <button id="sidebar-close" onclick="closeSidebar()">✕</button>
   </div>
   <div id="archives-list">
     <p style="font-family:var(--mono);font-size:11px;color:var(--muted);padding:12px;text-align:center;">Aucun cycle archivé</p>
@@ -702,6 +792,18 @@ function setChronoLabel(label) {
 // ─────────────────────────────────────────────
 // PERSIST
 // ─────────────────────────────────────────────
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-overlay').classList.add('visible');
+  document.getElementById('sidebar-toggle').style.display = 'none';
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('visible');
+  document.getElementById('sidebar-toggle').style.display = 'flex';
+}
+
 async function loadState() {
   try {
     const r = await fetch('/api/data');
