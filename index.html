@@ -1085,9 +1085,14 @@ function confirm(msg, cb) {
 function renderContent() {
   const el = document.getElementById('content');
   const badge = document.getElementById('phase-badge');
+  const sidebar = document.getElementById('sidebar');
+  const toggle  = document.getElementById('sidebar-toggle');
+  const overlay = document.getElementById('sidebar-overlay');
 
   if (!state.active) {
+    // Page accueil — sidebar visible
     badge.style.display = 'none';
+    showSidebar();
     el.innerHTML = `
       <div style="text-align:center">
         <div class="step-title" style="font-size:64px;margin-bottom:4px">SUIVI</div>
@@ -1099,6 +1104,9 @@ function renderContent() {
     `;
     return;
   }
+
+  // Cycle actif — masquer sidebar et bouton archives
+  hideSidebar();
 
   const ac = state.active;
   badge.style.display = 'inline';
@@ -1124,6 +1132,22 @@ let saisieNb      = 0;
 let saisieCuves   = [];   // tableau de strings (6 chiffres) ou null
 let saisieEditIdx = -1;   // index de la case en cours d'édition
 
+function hideSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const toggle  = document.getElementById('sidebar-toggle');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (sidebar) sidebar.style.display = 'none';
+  if (toggle)  toggle.style.display  = 'none';
+  if (overlay) overlay.classList.remove('visible');
+}
+
+function showSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const toggle  = document.getElementById('sidebar-toggle');
+  if (sidebar) sidebar.style.display = '';
+  if (toggle)  toggle.style.display  = '';
+}
+
 function startCycleFlow() {
   saisieNb      = 0;
   saisieCuves   = [];
@@ -1139,6 +1163,7 @@ function startCycleFlow() {
       TRAJET_ALLER: {start: Date.now(), elapsed: 0, paused: false, pauseStart: null}
     }
   };
+  hideSidebar();
   activeChronoKey = 'TRAJET_ALLER';
   setChronoLabel('RÉCUPÉRATION CUVE');
   if (chronoTick) clearInterval(chronoTick);
@@ -1228,8 +1253,24 @@ function chooseCuveNb(n) {
 }
 
 function editCuve(i) {
+  // Sur iOS, le clavier s'ouvre UNIQUEMENT si focus() est appelé
+  // directement dans le handler du clic utilisateur, sans re-render DOM.
+  // On met à jour saisieEditIdx puis on focus l'input existant si possible,
+  // sinon on re-render et on focus après.
   saisieEditIdx = i;
-  renderSaisie();
+
+  const existingInput = document.getElementById(`saisie-input-${i}`);
+  if (existingInput) {
+    // Input déjà dans le DOM → focus direct, pas de re-render
+    existingInput.focus();
+  } else {
+    // Input pas encore là → re-render puis focus
+    if (document.getElementById('saisie-nb')) renderSaisie(); // contexte page saisie
+    else renderTrajetAller();
+    // iOS : focus dans le même tick que le clic
+    const inp = document.getElementById(`saisie-input-${i}`);
+    if (inp) inp.focus();
+  }
 }
 
 function validateCuve(i) {
@@ -1294,7 +1335,7 @@ function renderTrajetAller() {
           SAISIR LES CUVES RÉCUPÉRÉES (facultatif pendant le trajet)
         </p>
         <p style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px">Nombre de cuves :</p>
-        <div class="btn-group" style="justify-content:center">
+        <div id="saisie-nb-trajet" class="btn-group" style="justify-content:center">
           <button class="btn btn-secondary" style="font-size:20px;padding:14px 28px" onclick="chooseCuveNbTrajet(1)">1</button>
           <button class="btn btn-secondary" style="font-size:20px;padding:14px 28px" onclick="chooseCuveNbTrajet(2)">2</button>
           <button class="btn btn-secondary" style="font-size:20px;padding:14px 28px" onclick="chooseCuveNbTrajet(3)">3</button>
@@ -1338,7 +1379,7 @@ function renderTrajetAller() {
         <br><button class="btn btn-ghost" style="font-size:11px;margin-top:8px" onclick="resetSaisieNb()">↩ CHANGER LE NOMBRE</button>
       </div>
     `;
-    if (editIdx >= 0) setTimeout(() => document.getElementById(`saisie-input-${editIdx}`)?.focus(), 50);
+    if (editIdx >= 0) setTimeout(() => { const inp = document.getElementById(`saisie-input-${editIdx}`); if(inp){inp.focus();inp.click();} }, 100);
   } else if (cuvesFilled) {
     // Cuves déjà saisies — affichage + possibilité de modifier
     saisieHTML = `
