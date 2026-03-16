@@ -969,32 +969,81 @@ async function archiveCycle(cycle) {
 // ─────────────────────────────────────────────
 // RENDER ARCHIVES
 // ─────────────────────────────────────────────
+function getCycleMonth(c) {
+  // Extraire YYYY-MM depuis la date du cycle (format dd/mm/yyyy hh:mm)
+  try {
+    const parts = c.date.split(' ')[0].split('/');
+    return `${parts[2]}-${parts[1]}`; // YYYY-MM
+  } catch(e) { return 'inconnu'; }
+}
+
+function monthLabel(ym) {
+  const mois = ['Janvier','Février','Mars','Avril','Mai','Juin',
+                 'Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const [y, m] = ym.split('-');
+  return `${mois[parseInt(m)-1]} ${y}`;
+}
+
 function renderArchives() {
   const el = document.getElementById('archives-list');
   if (state.cycles.length === 0) {
     el.innerHTML = '<p style="font-family:var(--mono);font-size:11px;color:var(--muted);padding:12px;text-align:center;">Aucun cycle archivé</p>';
     return;
   }
-  el.innerHTML = state.cycles.map((c,i) => `
-    <div class="archive-item" onclick="showArchive(${i})">
+
+  // Grouper par mois
+  const byMonth = {};
+  state.cycles.forEach((c, i) => {
+    const ym = getCycleMonth(c);
+    if (!byMonth[ym]) byMonth[ym] = [];
+    byMonth[ym].push({c, i});
+  });
+
+  // Mois triés du plus récent au plus ancien
+  const months = Object.keys(byMonth).sort().reverse();
+
+  // Mois en cours = le plus récent
+  const currentMonth = months[0];
+  if (!selectedMonth) selectedMonth = currentMonth;
+  // Si le mois sélectionné n'existe plus, revenir au plus récent
+  if (!byMonth[selectedMonth]) selectedMonth = currentMonth;
+
+  // Construire le sélecteur de mois
+  const monthSelector = months.length > 1 ? `
+    <div style="padding:8px 12px;border-bottom:1px solid var(--border)">
+      <select id="month-select"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);
+               border-radius:4px;color:var(--text);font-family:var(--mono);
+               font-size:11px;padding:6px 8px;cursor:pointer"
+        onchange="selectedMonth=this.value; renderArchives()">
+        ${months.map(ym => `
+          <option value="${ym}" ${ym===selectedMonth?'selected':''}>
+            ${monthLabel(ym)} (${byMonth[ym].length} cycle${byMonth[ym].length>1?'s':''})
+          </option>
+        `).join('')}
+      </select>
+    </div>
+  ` : `
+    <div style="padding:8px 12px;border-bottom:1px solid var(--border);
+                font-family:var(--mono);font-size:11px;color:var(--accent)">
+      ${monthLabel(currentMonth)}
+    </div>
+  `;
+
+  // Cycles du mois sélectionné, du plus récent au plus ancien
+  const cyclesOfMonth = [...byMonth[selectedMonth]].reverse();
+
+  const cyclesHTML = cyclesOfMonth.map(({c, i}) => `
+    <div class="archive-item" onclick="showArchive(${i})" style="position:relative">
       <div class="arc-date">${c.date}</div>
       <div class="arc-cuves">${c.cuves.map(cv=>cv.num).join(' · ')}</div>
       <div class="arc-label">${c.cuves.length} cuve${c.cuves.length>1?'s':''}</div>
+      <button class="btn btn-delete" style="margin-top:8px;width:100%"
+        onclick="event.stopPropagation(); deleteCycle(${i})">🗑 SUPPRIMER</button>
     </div>
-  `).reverse().map((h,i)=>h.replace(`showArchive(${i})`, `showArchive(${state.cycles.length-1-i})`)).join('');
-  // Rebuild properly
-  el.innerHTML = [...state.cycles].reverse().map((c,ri) => {
-    const i = state.cycles.length - 1 - ri;
-    return `
-      <div class="archive-item" onclick="showArchive(${i})" style="position:relative">
-        <div class="arc-date">${c.date}</div>
-        <div class="arc-cuves">${c.cuves.map(cv=>cv.num).join(' · ')}</div>
-        <div class="arc-label">${c.cuves.length} cuve${c.cuves.length>1?'s':''}</div>
-        <button class="btn btn-delete" style="margin-top:8px;width:100%"
-          onclick="event.stopPropagation(); deleteCycle(${i})">🗑 SUPPRIMER</button>
-      </div>
-    `;
-  }).join('');
+  `).join('');
+
+  el.innerHTML = monthSelector + cyclesHTML;
 }
 
 function showArchive(idx) {  // idx = index dans state.cycles
@@ -1133,6 +1182,7 @@ function renderContent() {
 // Numéros : 6 chiffres uniquement
 // ─────────────────────────────────────────────
 let saisieNb      = 0;
+let selectedMonth = null; // 'YYYY-MM' — null = mois en cours
 let saisieCuves   = [];   // tableau de strings (6 chiffres) ou null
 let saisieEditIdx = -1;   // index de la case en cours d'édition
 
