@@ -263,19 +263,22 @@
 
   /* ── CHRONO ── */
   #chrono-bar {
-    position: fixed;
-    top: 0;
-    right: 0;
     display: none;
     align-items: center;
     gap: 16px;
     background: var(--surface2);
-    border-bottom: 1px solid var(--border);
-    border-left: 1px solid var(--border);
-    padding: 8px 20px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 16px;
     font-family: var(--mono);
     font-size: 13px;
-    z-index: 100;
+    /* Ancré en haut à droite du contenu, suit le scroll */
+    position: sticky;
+    top: 12px;
+    align-self: flex-start;
+    margin: 12px 16px 0 auto;
+    z-index: 50;
+    width: fit-content;
   }
 
   #chrono-bar.visible { display: flex; }
@@ -680,6 +683,15 @@
     ☰ &nbsp;ARCHIVES
   </button>
 
+  <!-- CHRONO — suit le scroll de la page -->
+  <div id="chrono-bar">
+    <div>
+      <div class="chrono-label" id="chrono-label">PHASE EN COURS</div>
+      <div class="chrono-time" id="chrono-display">00:00:00</div>
+    </div>
+    <span class="chrono-paused" id="chrono-paused" style="display:none">■ PAUSE</span>
+  </div>
+
   <!-- INTERRUPTED BANNER -->
   <div id="interrupted-banner">
     ⚠ Le serveur a été redémarré pendant un cycle actif.<br>
@@ -692,14 +704,6 @@
 </div>
 
 <!-- CHRONO BAR -->
-<div id="chrono-bar">
-  <div>
-    <div class="chrono-label" id="chrono-label">PHASE EN COURS</div>
-    <div class="chrono-time" id="chrono-display">00:00:00</div>
-  </div>
-  <span class="chrono-paused" id="chrono-paused" style="display:none">■ PAUSE</span>
-</div>
-
 <!-- ARCHIVE MODAL -->
 <div id="archive-overlay">
   <div class="archive-modal" id="archive-modal-content"></div>
@@ -1798,6 +1802,7 @@ async function arrivedSite() {
 
 
   // Show completion
+  showSidebar(); // Réafficher la sidebar sur l'écran de fin
   const el = document.getElementById('content');
   document.getElementById('phase-badge').style.display = 'none';
   el.innerHTML = `
