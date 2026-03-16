@@ -273,13 +273,14 @@ def db_export_csv():
     rows = c.fetchall(); conn.close()
     out = io.StringIO()
     w = csv.writer(out, delimiter=';')
-    w.writerow(['Date','Cuves','ID Cycle','Nb cuves','Phase','Durée (HH:MM:SS)','Durée (ms)','Notes'])
+    w.writerow(['Date','Cuves','ID Cycle','Nb cuves','Phase','Durée (HH:MM:SS)','Durée (ms)','Durée (heures)','Notes'])
     prev = None
     for date, nums_json, cid, nb, phase, hms, ms, notes in rows:
         cuves = ', '.join(json.loads(nums_json))
         if prev and prev != cid:
             w.writerow([])
-        w.writerow([date, cuves, cid, nb, phase, hms, ms, notes or ''])
+        heures = round(ms / 3600000, 4)
+        w.writerow([date, cuves, cid, nb, phase, hms, ms, heures, notes or ''])
         prev = cid
     out.seek(0)
     return out.getvalue()
@@ -292,6 +293,38 @@ def db_export_csv():
 def healthz():
     try: init_db(); return 'OK', 200
     except Exception as e: return str(e), 500
+
+
+@app.route('/admin/nouvel_exercice')
+@admin_required
+def nouvel_exercice():
+    """
+    Réinitialise l'exercice :
+    1. Génère le CSV complet de l'exercice qui se termine
+    2. Supprime tous les cycles de Neon
+    3. Retourne le CSV en téléchargement
+    """
+    try:
+        # Générer le CSV avant suppression
+        content = db_export_csv()
+        fname   = f"chantier_exercice_{datetime.now().strftime('%Y%m%d')}.csv"
+
+        # Supprimer tous les cycles de Neon
+        conn = get_conn(); c = conn.cursor()
+        c.execute('DELETE FROM phases')
+        c.execute('DELETE FROM cycles')
+        c.execute('DELETE FROM cycles_raw')
+        c.execute('DELETE FROM active_cycle')
+        conn.commit(); conn.close()
+
+        # Retourner le CSV en téléchargement
+        return Response(
+            content.encode('utf-8-sig'),
+            mimetype='text/csv',
+            headers={'Content-Disposition': f'attachment; filename={fname}'}
+        )
+    except Exception as e:
+        return str(e), 500
 
 @app.route('/')
 @login_required
