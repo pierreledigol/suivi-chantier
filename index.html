@@ -835,43 +835,6 @@ function closeSidebar() {
 }
 
 // ─────────────────────────────────────────────
-// LOCALSTORAGE — sauvegarde locale du cycle actif
-// Protège contre la mise en veille du serveur Render
-// ─────────────────────────────────────────────
-const LS_KEY = 'chantier_active_cycle';
-
-function lsSave(active) {
-  try {
-    if (active) localStorage.setItem(LS_KEY, JSON.stringify(active));
-    else localStorage.removeItem(LS_KEY);
-  } catch(e) {}
-}
-
-function lsLoad() {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch(e) { return null; }
-}
-
-function lsClear() {
-  try { localStorage.removeItem(LS_KEY); } catch(e) {}
-}
-
-function restoreChronos(ac) {
-  // Recalcule le temps écoulé pour les chronos en cours
-  // (au cas où le serveur s'est endormi pendant qu'un chrono tournait)
-  const now = Date.now();
-  for (const key in ac.chronos) {
-    const ch = ac.chronos[key];
-    if (!ch.paused && ch.start > 0) {
-      const extra = now - ch.start;
-      ch.elapsed += Math.max(0, extra);
-      ch.start    = now;
-    }
-  }
-}
-
 function restoreChronoDisplay(ac) {
   let chronoKey = null, chronoLabel = '';
   if (ac.phase === 'TRAJET_ALLER') {
@@ -896,35 +859,14 @@ function restoreChronoDisplay(ac) {
 }
 
 async function loadState() {
+  // Vider le localStorage au cas où un ancien cycle y traîne encore
+  try { localStorage.removeItem('chantier_active_cycle'); } catch(e) {}
+
   try {
     const r = await fetch('/api/data');
     const d = await r.json();
     state.cycles = d.cycles || [];
-
-    const serverActive = d.active_cycle || null;
-    const localActive  = lsLoad();
-
-    if (serverActive) {
-      // Le serveur a un cycle actif → on l'utilise
-      state.active = serverActive;
-      lsSave(serverActive); // synchroniser localStorage
-    } else if (localActive) {
-      // Serveur vide (endormi/redémarré) mais localStorage a le cycle
-      // → recalculer les chronos et renvoyer au serveur
-      restoreChronos(localActive);
-      state.active = localActive;
-      // Remettre sur le serveur
-      try {
-        await fetch('/api/save_active', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({active_cycle: localActive})
-        });
-      } catch(e) {}
-      console.log('[RECOVERY] Cycle restauré depuis localStorage');
-    } else {
-      state.active = null;
-    }
+    state.active = d.active_cycle || null;
 
     if (state.active && state.active.chronos) {
       restoreChronoDisplay(state.active);
@@ -943,9 +885,6 @@ function startChronoTick() {
 }
 
 async function saveState() {
-  // Sauvegarde dans localStorage EN PREMIER (instantané, résiste au sommeil serveur)
-  lsSave(state.active);
-  // Puis sur le serveur
   try {
     await fetch('/api/save_active', {
       method: 'POST',
@@ -956,7 +895,6 @@ async function saveState() {
 }
 
 async function archiveCycle(cycle) {
-  lsClear(); // Effacer localStorage — cycle terminé
   try {
     await fetch('/api/archive_cycle', {
       method: 'POST',
@@ -1507,7 +1445,6 @@ function annulerCycle() {
     saisieNb      = 0;
     saisieCuves   = [];
     saisieEditIdx = -1;
-    lsClear(); // Effacer localStorage
     saveState();
     renderContent();
   });
