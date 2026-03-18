@@ -1191,52 +1191,140 @@ function renderSaisie() {
     return;
   }
 
-  // Étape 2 : grille de cases
-  const editIdx   = saisieEditIdx;
+  // Étape 2 : grille avec tous les inputs toujours dans le DOM
+  renderCuveGrid('saisie');
+}
+
+function renderCuveGrid(ctx) {
+  // ctx = 'saisie' ou 'trajet'
+  // Tous les inputs sont toujours présents — on montre/cache par CSS
+  // Cela évite la reconstruction du DOM qui ferme le clavier sur iOS
+
   const allFilled = saisieCuves.every(v => v);
+  const isTrajet  = (ctx === 'trajet');
 
   const casesHTML = saisieCuves.map((val, i) => {
-    const isEditing = (i === editIdx);
-    const filled    = !!val;
+    const filled = !!val;
+    const size   = isTrajet ? '110px' : '120px';
     return `
-      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px">CUVE ${i+1}</div>
-        <div class="cuve-btn ${filled ? 'green' : 'red'}"
-             onclick="editCuve(${i})"
-             style="${isEditing ? 'border-color:var(--accent);box-shadow:0 0 0 3px rgba(240,165,0,0.3)' : ''}">
-          ${isEditing ? `
-            <input id="saisie-input-${i}" type="text" inputmode="numeric" maxlength="6"
-              style="width:100px;background:transparent;border:none;border-bottom:2px solid var(--accent);outline:none;font-family:var(--display);font-size:26px;color:var(--text);text-align:center;letter-spacing:3px;padding-bottom:4px"
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px">CUVE ${i+1}</div>
+        <div id="cuve-box-${i}" class="cuve-btn ${filled ? 'green' : 'red'}"
+             style="width:${size};height:${size};position:relative;cursor:pointer"
+             onclick="editCuve(${i})">
+          <!-- Label affiché quand pas en édition -->
+          <div id="cuve-label-${i}" style="display:flex;flex-direction:column;align-items:center;gap:4px">
+            <span class="cuve-num" style="font-size:${filled?'26px':'18px'}">${val || '—'}</span>
+            <span style="font-size:9px">${filled ? '✓ OK' : 'CLIQUER'}</span>
+          </div>
+          <!-- Input toujours dans le DOM, caché quand pas en édition -->
+          <div id="cuve-input-wrap-${i}" style="display:none;flex-direction:column;align-items:center;gap:4px">
+            <input id="saisie-input-${i}"
+              type="text" inputmode="numeric" maxlength="6"
+              style="width:90px;background:transparent;border:none;border-bottom:2px solid var(--accent);outline:none;font-family:var(--display);font-size:22px;color:var(--text);text-align:center;letter-spacing:2px;padding-bottom:4px"
               placeholder="000000"
               value="${val || ''}"
               oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6)"
-              onkeydown="if(event.key==='Enter')validateCuve(${i})"
-              onblur="onCuveInputBlur(event, ${i})"
+              onkeydown="if(event.key==='Enter')focusNextCuve(${i})"
+              onblur="onCuveInputBlur(${i})"
             >
-            <span style="font-size:9px;color:var(--accent);margin-top:4px">6 CHIFFRES</span>
-          ` : `
-            <span class="cuve-num" style="font-size:${filled?'28px':'22px'}">${val || '—'}</span>
-            <span style="font-size:10px">${filled ? '✓ OK' : 'CLIQUER'}</span>
-          `}
+            <span style="font-size:9px;color:var(--accent)">6 CHIFFRES</span>
+          </div>
         </div>
-        ${isEditing ? `<button class="btn btn-success" style="padding:8px 20px;font-size:12px" onclick="validateCuve(${i})">✓ VALIDER</button>` : ''}
       </div>
     `;
   }).join('');
 
-  el.innerHTML = `
-    <div style="text-align:center">
-      <div class="step-title">SAISIE DES CUVES</div>
-      <div class="step-sub">Cliquez sur une case pour saisir ou modifier</div>
-      <div class="separator"></div>
-      <div class="btn-group" style="align-items:flex-start;justify-content:center;margin-bottom:32px">${casesHTML}</div>
-      ${allFilled ? `<button class="btn btn-primary" onclick="finalizeSaisie()">VALIDER →</button><br><br>` : ''}
-      <button class="btn btn-ghost" onclick="resetSaisieNb()">← CHANGER LE NOMBRE</button>
-    </div>
-  `;
+  const wrapId  = isTrajet ? 'cuve-grid-trajet' : 'cuve-grid-saisie';
+  const btnHTML = allFilled
+    ? `<button class="btn btn-primary" style="margin-top:16px"
+         onclick="${isTrajet ? 'finalizeSaisieTrajet' : 'finalizeSaisie'}()">
+         ✓ VALIDER LES CUVES
+       </button>`
+    : '';
+  const backBtn = isTrajet
+    ? `<button class="btn btn-ghost" style="font-size:11px;margin-top:8px" onclick="resetSaisieNb()">↩ CHANGER LE NOMBRE</button>`
+    : `<button class="btn btn-ghost" onclick="resetSaisieNb()">← CHANGER LE NOMBRE</button>`;
 
-  if (editIdx >= 0) {
-    setTimeout(() => document.getElementById(`saisie-input-${editIdx}`)?.focus(), 50);
+  if (!isTrajet) {
+    const el = document.getElementById('content');
+    el.innerHTML = `
+      <div style="text-align:center">
+        <div class="step-title">SAISIE DES CUVES</div>
+        <div class="step-sub">Cliquez sur une case pour saisir ou modifier</div>
+        <div class="separator"></div>
+        <div id="${wrapId}" class="btn-group" style="align-items:flex-start;justify-content:center;margin-bottom:16px">${casesHTML}</div>
+        ${btnHTML}
+        <br><br>${backBtn}
+      </div>
+    `;
+  } else {
+    // Trajet : injecter dans le conteneur existant
+    const wrap = document.getElementById(wrapId);
+    if (wrap) {
+      wrap.innerHTML = casesHTML;
+    }
+    const btnWrap = document.getElementById('cuve-grid-btn');
+    if (btnWrap) btnWrap.innerHTML = btnHTML;
+  }
+
+  // Activer la case en cours d'édition
+  activateCuveInput(saisieEditIdx);
+}
+
+function activateCuveInput(idx) {
+  const n = saisieCuves.length;
+  for (let i = 0; i < n; i++) {
+    const box   = document.getElementById(`cuve-box-${i}`);
+    const label = document.getElementById(`cuve-label-${i}`);
+    const wrap  = document.getElementById(`cuve-input-wrap-${i}`);
+    const input = document.getElementById(`saisie-input-${i}`);
+    if (!box) continue;
+    if (i === idx) {
+      box.style.borderColor  = 'var(--accent)';
+      box.style.boxShadow    = '0 0 0 3px rgba(240,165,0,0.3)';
+      if (label) label.style.display = 'none';
+      if (wrap)  wrap.style.display  = 'flex';
+      if (input) {
+        input.value = saisieCuves[i] || '';
+        // Focus direct — même tick que l'interaction utilisateur
+        input.focus();
+      }
+    } else {
+      const filled = !!saisieCuves[i];
+      box.style.borderColor = filled ? 'var(--green)' : 'var(--red)';
+      box.style.boxShadow   = '';
+      box.className = `cuve-btn ${filled ? 'green' : 'red'}`;
+      if (label) {
+        label.style.display = 'flex';
+        label.innerHTML = `
+          <span class="cuve-num" style="font-size:${filled?'26px':'18px'}">${saisieCuves[i] || '—'}</span>
+          <span style="font-size:9px">${filled ? '✓ OK' : 'CLIQUER'}</span>
+        `;
+      }
+      if (wrap) wrap.style.display = 'none';
+    }
+  }
+}
+
+function focusNextCuve(i) {
+  // Valider la case courante puis passer à la suivante
+  const input = document.getElementById(`saisie-input-${i}`);
+  const val   = input?.value?.trim() || '';
+  if (/^[0-9]{6}$/.test(val)) {
+    saisieCuves[i] = val;
+    persistSaisie();
+  }
+  const next = saisieCuves.findIndex((v, idx) => idx > i && !v);
+  if (next >= 0) {
+    saisieEditIdx = next;
+    activateCuveInput(next);
+  } else {
+    saisieEditIdx = -1;
+    activateCuveInput(-1);
+    // Rafraîchir pour afficher le bouton VALIDER
+    if (state.active?.phase === 'TRAJET_ALLER') renderTrajetAller();
+    else renderSaisie();
   }
 }
 
@@ -1248,63 +1336,51 @@ function chooseCuveNb(n) {
 }
 
 let _blurTimeout = null;
-let _skipBlur = false; // true quand on clique sur une autre case
 
-function onCuveInputBlur(event, i) {
-  // Sur iOS/Android relatedTarget est toujours null
-  // On utilise un délai court : si dans ce délai editCuve() est appelé
-  // (clic sur autre case), on annule la validation
+function onCuveInputBlur(i) {
+  // Délai pour laisser editCuve() s'exécuter si on clique sur une autre case
   _blurTimeout = setTimeout(() => {
-    if (!_skipBlur) {
-      validateCuve(i);
-    }
-    _skipBlur = false;
-  }, 150);
+    validateCuve(i);
+    _blurTimeout = null;
+  }, 200);
 }
 
 function editCuve(i) {
-  // Annuler le blur en cours (clic depuis une autre case)
-  _skipBlur = true;
+  // Annuler le blur en cours si on change de case
   if (_blurTimeout) { clearTimeout(_blurTimeout); _blurTimeout = null; }
-
   saisieEditIdx = i;
-
-  const existingInput = document.getElementById(`saisie-input-${i}`);
-  if (existingInput) {
-    existingInput.focus();
-  } else {
-    if (document.getElementById('saisie-nb')) renderSaisie();
-    else renderTrajetAller();
-    const inp = document.getElementById(`saisie-input-${i}`);
-    if (inp) inp.focus();
-  }
+  activateCuveInput(i);
 }
 
 function validateCuve(i) {
   const input = document.getElementById(`saisie-input-${i}`);
   const val   = input?.value?.trim() || '';
-
   if (!/^[0-9]{6}$/.test(val)) {
     if (input) {
       input.style.borderBottomColor = 'var(--red)';
       input.style.color = 'var(--red)';
-      input.focus();
     }
     return;
   }
-
   saisieCuves[i] = val;
-  // Persister dans state.active si on est en phase TRAJET_ALLER
+  persistSaisie();
+  // Passer auto à la prochaine case vide
+  const nextEmpty = saisieCuves.findIndex((v, idx) => idx > i && !v);
+  saisieEditIdx   = nextEmpty >= 0 ? nextEmpty : -1;
+  activateCuveInput(saisieEditIdx);
+  // Si toutes les cases sont remplies, rafraîchir pour afficher le bouton VALIDER
+  if (saisieCuves.every(v => v)) {
+    if (state.active?.phase === 'TRAJET_ALLER') renderTrajetAller();
+    else renderSaisie();
+  }
+}
+
+function persistSaisie() {
   if (state.active && state.active.phase === 'TRAJET_ALLER') {
     state.active._saisieNb    = saisieNb;
     state.active._saisieCuves = [...saisieCuves];
     saveState();
   }
-  // Passer auto à la prochaine case vide
-  const nextEmpty = saisieCuves.findIndex((v, idx) => idx > i && !v);
-  saisieEditIdx   = nextEmpty >= 0 ? nextEmpty : -1;
-  if (state.active && state.active.phase === 'TRAJET_ALLER') renderTrajetAller();
-  else renderSaisie();
 }
 
 function finalizeSaisie() {
@@ -1357,44 +1433,14 @@ function renderTrajetAller() {
       </div>
     `;
   } else if (saisieNb > 0 && !cuvesFilled) {
-    // Grille de cases pendant le trajet
-    const editIdx = saisieEditIdx;
     const allFilled = saisieCuves.every(v => v);
-    const casesHTML = saisieCuves.map((val, i) => {
-      const isEditing = (i === editIdx);
-      const filled    = !!val;
-      return `
-        <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
-          <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">CUVE ${i+1}</div>
-          <div class="cuve-btn ${filled ? 'green' : 'red'}"
-               style="width:110px;height:110px;${isEditing ? 'border-color:var(--accent);box-shadow:0 0 0 3px rgba(240,165,0,0.3)' : ''}"
-               onclick="editCuve(${i})">
-            ${isEditing ? `
-              <input id="saisie-input-${i}" type="text" inputmode="numeric" maxlength="6"
-                style="width:90px;background:transparent;border:none;border-bottom:2px solid var(--accent);outline:none;font-family:var(--display);font-size:22px;color:var(--text);text-align:center;letter-spacing:2px;padding-bottom:4px"
-                placeholder="000000" value="${val || ''}"
-                oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6)"
-                onkeydown="if(event.key==='Enter')validateCuve(${i})"
-                onblur="onCuveInputBlur(event, ${i})"
-              >
-              <span style="font-size:9px;color:var(--accent);margin-top:4px">6 CHIFFRES</span>
-            ` : `
-              <span class="cuve-num" style="font-size:${filled?'24px':'18px'}">${val || '—'}</span>
-              <span style="font-size:9px">${filled ? '✓ OK' : 'CLIQUER'}</span>
-            `}
-          </div>
-          ${isEditing ? `<button class="btn btn-success" style="padding:6px 14px;font-size:11px" onclick="validateCuve(${i})">✓</button>` : ''}
-        </div>
-      `;
-    }).join('');
     saisieHTML = `
       <div style="margin:20px 0">
-        <div class="btn-group" style="align-items:flex-start;justify-content:center;margin-bottom:12px">${casesHTML}</div>
-        ${allFilled ? `<button class="btn btn-primary" style="margin-top:8px" onclick="finalizeSaisieTrajet()">✓ VALIDER LES CUVES</button>` : ''}
+        <div id="cuve-grid-trajet" class="btn-group" style="align-items:flex-start;justify-content:center;margin-bottom:12px"></div>
+        <div id="cuve-grid-btn"></div>
         <br><button class="btn btn-ghost" style="font-size:11px;margin-top:8px" onclick="resetSaisieNb()">↩ CHANGER LE NOMBRE</button>
       </div>
     `;
-    if (editIdx >= 0) setTimeout(() => { const inp = document.getElementById(`saisie-input-${editIdx}`); if(inp){inp.focus();inp.click();} }, 100);
   } else if (cuvesFilled) {
     // Cuves déjà saisies — affichage + possibilité de modifier
     saisieHTML = `
@@ -1433,6 +1479,11 @@ function renderTrajetAller() {
       <button class="btn btn-ghost" onclick="annulerCycle()">✕ ANNULER LE CYCLE</button>
     </div>
   `;
+  // Rendre la grille après injection du HTML
+  if (saisieNb > 0 && !cuvesFilled) {
+    renderCuveGrid('trajet');
+    if (saisieEditIdx >= 0) activateCuveInput(saisieEditIdx);
+  }
 }
 
 function chooseCuveNbTrajet(n) {
