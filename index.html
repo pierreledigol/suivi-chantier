@@ -872,6 +872,15 @@ async function loadState() {
       restoreChronoDisplay(state.active);
       document.getElementById('interrupted-banner').classList.remove('visible');
     }
+
+    // Restaurer la saisie en cours si elle était persistée
+    if (state.active && state.active.phase === 'TRAJET_ALLER') {
+      if (state.active._saisieNb && state.active._saisieNb > 0) {
+        saisieNb    = state.active._saisieNb;
+        saisieCuves = state.active._saisieCuves || Array(saisieNb).fill(null);
+        saisieEditIdx = -1;
+      }
+    }
   } catch(e) { console.error('loadState error:', e); }
   renderArchives();
   renderContent();
@@ -1209,6 +1218,7 @@ function renderSaisie() {
               value="${val || ''}"
               oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6)"
               onkeydown="if(event.key==='Enter')validateCuve(${i})"
+              onblur="validateCuve(${i})"
             >
             <span style="font-size:9px;color:var(--accent);margin-top:4px">6 CHIFFRES</span>
           ` : `
@@ -1279,10 +1289,17 @@ function validateCuve(i) {
   }
 
   saisieCuves[i] = val;
+  // Persister dans state.active si on est en phase TRAJET_ALLER
+  if (state.active && state.active.phase === 'TRAJET_ALLER') {
+    state.active._saisieNb    = saisieNb;
+    state.active._saisieCuves = [...saisieCuves];
+    saveState();
+  }
   // Passer auto à la prochaine case vide
   const nextEmpty = saisieCuves.findIndex((v, idx) => idx > i && !v);
   saisieEditIdx   = nextEmpty >= 0 ? nextEmpty : -1;
-  renderSaisie();
+  if (state.active && state.active.phase === 'TRAJET_ALLER') renderTrajetAller();
+  else renderSaisie();
 }
 
 function finalizeSaisie() {
@@ -1353,6 +1370,7 @@ function renderTrajetAller() {
                 placeholder="000000" value="${val || ''}"
                 oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6)"
                 onkeydown="if(event.key==='Enter')validateCuve(${i})"
+                onblur="validateCuve(${i})"
               >
               <span style="font-size:9px;color:var(--accent);margin-top:4px">6 CHIFFRES</span>
             ` : `
@@ -1416,13 +1434,23 @@ function chooseCuveNbTrajet(n) {
   saisieNb      = n;
   saisieCuves   = Array(n).fill(null);
   saisieEditIdx = 0;
+  // Persister dans state.active pour survie au rechargement
+  if (state.active) {
+    state.active._saisieNb     = n;
+    state.active._saisieCuves  = saisieCuves;
+    saveState();
+  }
   renderTrajetAller();
 }
 
 function finalizeSaisieTrajet() {
-  state.active.cuves   = saisieCuves.map(n => ({num: n, repaired: false}));
-  state.active.nbCuves = saisieNb;
-  saisieEditIdx        = -1;
+  state.active.cuves        = saisieCuves.map(n => ({num: n, repaired: false}));
+  state.active.nbCuves      = saisieNb;
+  state.active._saisieNb    = 0;
+  state.active._saisieCuves = [];
+  saisieNb      = 0;
+  saisieCuves   = [];
+  saisieEditIdx = -1;
   saveState();
   renderTrajetAller();
 }
