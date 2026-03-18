@@ -1326,7 +1326,7 @@ function updateCuveBox(i, val) {
 }
 
 function focusNextCuve(i) {
-  // Valider la case courante
+  ignoreNextOutsideClick();
   const input = document.getElementById(`saisie-input-${i}`);
   const val   = (input?.value || saisieCuves[i] || '').trim();
   if (/^[0-9]{6}$/.test(val)) {
@@ -1335,43 +1335,14 @@ function focusNextCuve(i) {
   }
   const next = saisieCuves.findIndex((v, idx) => idx > i && !v);
   if (next >= 0) {
-    // Passer à la prochaine case vide
     saisieEditIdx = next;
     activateCuveInput(next);
   } else {
-    // Toutes les cases remplies — fermer l'édition sans reconstruire le DOM
+    // Toutes les cases remplies — re-render complet pour afficher le bouton VALIDER
     saisieEditIdx = -1;
-    activateCuveInput(-1);
-    // Ajouter/mettre à jour le bouton VALIDER sans tout reconstruire
-    showValidateButton();
+    if (state.active?.phase === 'TRAJET_ALLER') renderTrajetAller();
+    else renderSaisie();
   }
-}
-
-function showValidateButton() {
-  const isTrajet = state.active?.phase === 'TRAJET_ALLER';
-  const fn       = isTrajet ? 'finalizeSaisieTrajet' : 'finalizeSaisie';
-  const btnId    = isTrajet ? 'cuve-grid-btn' : 'cuve-validate-btn';
-  const gridId   = isTrajet ? 'cuve-grid-trajet' : 'cuve-grid-saisie';
-
-  // Essayer d'insérer le bouton sans reconstruire le DOM
-  let btnWrap = document.getElementById(btnId);
-  const grid  = document.getElementById(gridId);
-
-  if (!btnWrap && grid) {
-    btnWrap = document.createElement('div');
-    btnWrap.id = btnId;
-    btnWrap.style.cssText = 'margin-top:16px;text-align:center';
-    grid.parentNode.insertBefore(btnWrap, grid.nextSibling);
-  }
-
-  if (btnWrap) {
-    btnWrap.innerHTML = `<button class="btn btn-primary" onclick="${fn}()">✓ VALIDER LES CUVES</button>`;
-    return; // Succès — pas besoin de re-render
-  }
-
-  // Fallback : re-render complet si le DOM n'a pas la structure attendue
-  if (isTrajet) renderTrajetAller();
-  else renderSaisie();
 }
 
 function chooseCuveNb(n) {
@@ -1421,27 +1392,44 @@ function validateCuve(i) {
   }
 }
 
+let _ignoreOutsideClick = false;
+
+function ignoreNextOutsideClick() {
+  _ignoreOutsideClick = true;
+  setTimeout(() => { _ignoreOutsideClick = false; }, 300);
+}
+
 // Clic en dehors des cases → valider la case active
-document.addEventListener('touchend', function(e) {
+function validateOutside() {
   if (saisieEditIdx < 0) return;
+  ignoreNextOutsideClick();
+  const idx = saisieEditIdx;
+  saisieEditIdx = -1;
+  // saisieCuves[idx] déjà à jour grâce à saveCuveRealtime
+  activateCuveInput(-1);
+  // Re-render pour afficher l'état final
+  if (state.active?.phase === 'TRAJET_ALLER') renderTrajetAller();
+  else renderSaisie();
+}
+
+document.addEventListener('touchend', function(e) {
+  if (_ignoreOutsideClick || saisieEditIdx < 0) return;
   const target = e.target;
-  // Ignorer si on clique sur une case, un input, ou un bouton de la grille
   if (target.closest('[id^="cuve-box-"]') ||
       target.closest('[id^="saisie-input-"]') ||
-      target.closest('[id^="cuve-input-wrap-"]')) return;
-  // Valider et fermer
-  focusNextCuve(saisieEditIdx);
-  saisieEditIdx = -1;
+      target.closest('[id^="cuve-input-wrap-"]') ||
+      target.closest('.btn')) return;
+  validateOutside();
 }, { passive: true });
 
 document.addEventListener('mousedown', function(e) {
-  if (saisieEditIdx < 0) return;
+  if (_ignoreOutsideClick || saisieEditIdx < 0) return;
   const target = e.target;
   if (target.closest('[id^="cuve-box-"]') ||
       target.closest('[id^="saisie-input-"]') ||
-      target.closest('[id^="cuve-input-wrap-"]')) return;
-  focusNextCuve(saisieEditIdx);
-  saisieEditIdx = -1;
+      target.closest('[id^="cuve-input-wrap-"]') ||
+      target.closest('.btn')) return;
+  validateOutside();
 });
 
 function saveCuveRealtime(i, val) {
@@ -1488,7 +1476,7 @@ function renderTrajetAller() {
 
   const isPaused   = ac.chronos['TRAJET_ALLER']?.paused;
   const hasCuves   = ac.cuves.length > 0;
-  const cuvesFilled = ac.cuves.length === ac.nbCuves && ac.nbCuves > 0;
+  const cuvesFilled = (ac.cuves.length === ac.nbCuves && ac.nbCuves > 0) || (saisieNb > 0 && saisieCuves.length === saisieNb && saisieCuves.every(v => v));
 
   // Zone de saisie des cuves (si pas encore choisi le nombre)
   let saisieHTML = '';
@@ -1516,14 +1504,15 @@ function renderTrajetAller() {
       </div>
     `;
   } else if (cuvesFilled) {
-    // Cuves déjà saisies — affichage + possibilité de modifier
+    // Utiliser saisieCuves si ac.cuves pas encore finalisé
+    const displayCuves = ac.cuves.length > 0 ? ac.cuves.map(c => c.num) : saisieCuves.filter(v => v);
     saisieHTML = `
       <div style="margin:20px 0">
         <div class="btn-group" style="justify-content:center;margin-bottom:8px">
-          ${ac.cuves.map(c => `
+          ${displayCuves.map(num => `
             <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
               <div class="cuve-btn green" style="width:100px;height:100px">
-                <span class="cuve-num" style="font-size:22px">${c.num}</span>
+                <span class="cuve-num" style="font-size:22px">${num}</span>
                 <span style="font-size:9px">✓ OK</span>
               </div>
             </div>
