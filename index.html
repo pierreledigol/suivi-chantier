@@ -1226,9 +1226,10 @@ function renderCuveGrid(ctx) {
               value="${val || ''}"
               oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6)"
               onkeydown="if(event.key==='Enter')focusNextCuve(${i})"
-              onblur="onCuveInputBlur(${i})"
             >
             <span style="font-size:9px;color:var(--accent)">6 CHIFFRES</span>
+            <button class="btn btn-success" style="padding:6px 20px;font-size:11px;margin-top:4px"
+              onclick="event.stopPropagation();focusNextCuve(${i})">✓ OK</button>
           </div>
         </div>
       </div>
@@ -1273,38 +1274,61 @@ function renderCuveGrid(ctx) {
 }
 
 function activateCuveInput(idx) {
-  const n = saisieCuves.length;
-  for (let i = 0; i < n; i++) {
-    const box   = document.getElementById(`cuve-box-${i}`);
-    const label = document.getElementById(`cuve-label-${i}`);
-    const wrap  = document.getElementById(`cuve-input-wrap-${i}`);
-    const input = document.getElementById(`saisie-input-${i}`);
-    if (!box) continue;
-    if (i === idx) {
-      box.style.borderColor  = 'var(--accent)';
-      box.style.boxShadow    = '0 0 0 3px rgba(240,165,0,0.3)';
-      if (label) label.style.display = 'none';
-      if (wrap)  wrap.style.display  = 'flex';
-      if (input) {
-        input.value = saisieCuves[i] || '';
-        // Focus direct — même tick que l'interaction utilisateur
-        input.focus();
+  // 1. Sauvegarder la valeur de la case actuellement active avant de changer
+  if (saisieEditIdx >= 0 && saisieEditIdx !== idx) {
+    const prevInput = document.getElementById(`saisie-input-${saisieEditIdx}`);
+    if (prevInput) {
+      const val = prevInput.value.trim();
+      if (/^[0-9]{6}$/.test(val)) {
+        saisieCuves[saisieEditIdx] = val;
+        persistSaisie();
+        updateCuveBox(saisieEditIdx, val);
       }
-    } else {
-      const filled = !!saisieCuves[i];
-      box.style.borderColor = filled ? 'var(--green)' : 'var(--red)';
-      box.style.boxShadow   = '';
-      box.className = `cuve-btn ${filled ? 'green' : 'red'}`;
-      if (label) {
-        label.style.display = 'flex';
-        label.innerHTML = `
-          <span class="cuve-num" style="font-size:${filled?'26px':'18px'}">${saisieCuves[i] || '—'}</span>
-          <span style="font-size:9px">${filled ? '✓ OK' : 'CLIQUER'}</span>
-        `;
-      }
-      if (wrap) wrap.style.display = 'none';
     }
   }
+
+  saisieEditIdx = idx;
+  const n = saisieCuves.length;
+
+  for (let i = 0; i < n; i++) {
+    const label = document.getElementById(`cuve-label-${i}`);
+    const wrap  = document.getElementById(`cuve-input-wrap-${i}`);
+    const box   = document.getElementById(`cuve-box-${i}`);
+    const input = document.getElementById(`saisie-input-${i}`);
+    if (!box) continue;
+
+    if (i === idx) {
+      box.style.borderColor = 'var(--accent)';
+      box.style.boxShadow   = '0 0 0 3px rgba(240,165,0,0.3)';
+      if (label) label.style.display = 'none';
+      if (wrap)  wrap.style.display  = 'flex';
+      if (input) { input.value = saisieCuves[i] || ''; input.focus(); }
+    } else {
+      updateCuveBox(i, saisieCuves[i]);
+      if (label) label.style.display = 'flex';
+      if (wrap)  wrap.style.display  = 'none';
+    }
+  }
+
+  // Rafraîchir le bouton VALIDER si toutes les cases sont remplies
+  if (saisieCuves.every(v => v) && idx === -1) {
+    if (state.active?.phase === 'TRAJET_ALLER') renderTrajetAller();
+    else renderSaisie();
+  }
+}
+
+function updateCuveBox(i, val) {
+  const box   = document.getElementById(`cuve-box-${i}`);
+  const label = document.getElementById(`cuve-label-${i}`);
+  if (!box) return;
+  const filled = !!val;
+  box.className     = `cuve-btn ${filled ? 'green' : 'red'}`;
+  box.style.borderColor = filled ? '' : '';
+  box.style.boxShadow   = '';
+  if (label) label.innerHTML = `
+    <span class="cuve-num" style="font-size:${filled?'26px':'18px'}">${val || '—'}</span>
+    <span style="font-size:9px">${filled ? '✓ OK' : 'CLIQUER'}</span>
+  `;
 }
 
 function focusNextCuve(i) {
