@@ -1326,23 +1326,48 @@ function updateCuveBox(i, val) {
 }
 
 function focusNextCuve(i) {
-  // Valider la case courante puis passer à la suivante
+  // Valider la case courante
   const input = document.getElementById(`saisie-input-${i}`);
-  const val   = input?.value?.trim() || '';
+  const val   = (input?.value || saisieCuves[i] || '').trim();
   if (/^[0-9]{6}$/.test(val)) {
     saisieCuves[i] = val;
     persistSaisie();
   }
   const next = saisieCuves.findIndex((v, idx) => idx > i && !v);
   if (next >= 0) {
+    // Passer à la prochaine case vide
     saisieEditIdx = next;
     activateCuveInput(next);
   } else {
+    // Toutes les cases remplies — fermer l'édition sans reconstruire le DOM
     saisieEditIdx = -1;
     activateCuveInput(-1);
-    // Rafraîchir pour afficher le bouton VALIDER
-    if (state.active?.phase === 'TRAJET_ALLER') renderTrajetAller();
-    else renderSaisie();
+    // Ajouter/mettre à jour le bouton VALIDER sans tout reconstruire
+    showValidateButton();
+  }
+}
+
+function showValidateButton() {
+  // Ajouter le bouton VALIDER sous la grille sans reconstruire tout le DOM
+  const isTrajet = state.active?.phase === 'TRAJET_ALLER';
+  const btnId    = isTrajet ? 'cuve-grid-btn' : 'cuve-validate-btn';
+  const fn       = isTrajet ? 'finalizeSaisieTrajet' : 'finalizeSaisie';
+
+  // Chercher le conteneur du bouton
+  let btnWrap = document.getElementById(btnId);
+  if (!btnWrap) {
+    // Créer et insérer après la grille
+    const gridId  = isTrajet ? 'cuve-grid-trajet' : 'cuve-grid-saisie';
+    const grid    = document.getElementById(gridId);
+    if (grid) {
+      btnWrap = document.createElement('div');
+      btnWrap.id = btnId;
+      btnWrap.style.marginTop = '16px';
+      grid.parentNode.insertBefore(btnWrap, grid.nextSibling);
+    }
+  }
+  if (btnWrap) {
+    btnWrap.innerHTML = `<button class="btn btn-primary" onclick="${fn}()">✓ VALIDER LES CUVES</button>`;
   }
 }
 
@@ -1392,6 +1417,29 @@ function validateCuve(i) {
     else renderSaisie();
   }
 }
+
+// Clic en dehors des cases → valider la case active
+document.addEventListener('touchend', function(e) {
+  if (saisieEditIdx < 0) return;
+  const target = e.target;
+  // Ignorer si on clique sur une case, un input, ou un bouton de la grille
+  if (target.closest('[id^="cuve-box-"]') ||
+      target.closest('[id^="saisie-input-"]') ||
+      target.closest('[id^="cuve-input-wrap-"]')) return;
+  // Valider et fermer
+  focusNextCuve(saisieEditIdx);
+  saisieEditIdx = -1;
+}, { passive: true });
+
+document.addEventListener('mousedown', function(e) {
+  if (saisieEditIdx < 0) return;
+  const target = e.target;
+  if (target.closest('[id^="cuve-box-"]') ||
+      target.closest('[id^="saisie-input-"]') ||
+      target.closest('[id^="cuve-input-wrap-"]')) return;
+  focusNextCuve(saisieEditIdx);
+  saisieEditIdx = -1;
+});
 
 function saveCuveRealtime(i, val) {
   // Sauvegarde immédiate à chaque frappe — évite toute perte au changement de case
