@@ -1224,7 +1224,7 @@ function renderCuveGrid(ctx) {
               style="width:90px;background:transparent;border:none;border-bottom:2px solid var(--accent);outline:none;font-family:var(--display);font-size:22px;color:var(--text);text-align:center;letter-spacing:2px;padding-bottom:4px"
               placeholder="000000"
               value="${val || ''}"
-              oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6)"
+              oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6); saveCuveRealtime(${i}, this.value)"
               onkeydown="if(event.key==='Enter')focusNextCuve(${i})"
             >
             <span style="font-size:9px;color:var(--accent)">6 CHIFFRES</span>
@@ -1274,17 +1274,11 @@ function renderCuveGrid(ctx) {
 }
 
 function activateCuveInput(idx) {
-  // 1. Sauvegarder la valeur de la case actuellement active avant de changer
+  // 1. La valeur est déjà dans saisieCuves grâce à saveCuveRealtime()
+  //    On met juste à jour l'affichage de la case précédente
   if (saisieEditIdx >= 0 && saisieEditIdx !== idx) {
-    const prevInput = document.getElementById(`saisie-input-${saisieEditIdx}`);
-    if (prevInput) {
-      const val = prevInput.value.trim();
-      if (/^[0-9]{6}$/.test(val)) {
-        saisieCuves[saisieEditIdx] = val;
-        persistSaisie();
-        updateCuveBox(saisieEditIdx, val);
-      }
-    }
+    updateCuveBox(saisieEditIdx, saisieCuves[saisieEditIdx]);
+    persistSaisie();
   }
 
   saisieEditIdx = idx;
@@ -1397,6 +1391,11 @@ function validateCuve(i) {
     if (state.active?.phase === 'TRAJET_ALLER') renderTrajetAller();
     else renderSaisie();
   }
+}
+
+function saveCuveRealtime(i, val) {
+  // Sauvegarde immédiate à chaque frappe — évite toute perte au changement de case
+  saisieCuves[i] = val.length === 6 ? val : null;
 }
 
 function persistSaisie() {
