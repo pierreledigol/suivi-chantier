@@ -31,7 +31,8 @@
     font-family: var(--sans);
     min-height: 100vh;
     display: flex;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   /* ── SIDEBAR ── */
@@ -42,7 +43,8 @@
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    min-height: 100vh;
+    height: auto;
     overflow: hidden;
     transition: transform 0.3s ease;
     z-index: 100;
@@ -122,7 +124,7 @@
 
   /* ── RESPONSIVE MOBILE ── */
   @media (max-width: 640px) {
-    body { overflow-y: auto; }
+    body { overflow-y: auto; } /* scroll global */
 
     #sidebar {
       position: fixed;
@@ -163,10 +165,6 @@
     #topbar {
       justify-content: center;
       padding: 16px;
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      background: var(--bg);
     }
     #topbar h1 {
       text-align: center;
@@ -175,8 +173,6 @@
     #content {
       justify-content: flex-start;
       padding: 24px 16px 80px;
-      overflow: visible;
-      height: auto;
     }
   }
 
@@ -220,8 +216,9 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
+    min-height: 100vh;
+    height: auto;
+    overflow: visible;
   }
 
   #topbar {
@@ -256,9 +253,10 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     padding: 40px;
-    overflow-y: auto;
+    overflow: visible;
+    min-height: 60vh;
   }
 
   /* ── CHRONO ── */
@@ -272,12 +270,7 @@
     padding: 8px 16px;
     font-family: var(--mono);
     font-size: 13px;
-    /* Ancré en haut à droite du contenu, suit le scroll */
-    position: sticky;
-    top: 12px;
-    align-self: flex-start;
     margin: 12px 16px 0 auto;
-    z-index: 50;
     width: fit-content;
   }
 
