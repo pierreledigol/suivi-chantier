@@ -1211,7 +1211,7 @@ function renderSaisie() {
               value="${val || ''}"
               oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6)"
               onkeydown="if(event.key==='Enter')validateCuve(${i})"
-              onblur="validateCuve(${i})"
+              onblur="onCuveInputBlur(event, ${i})"
             >
             <span style="font-size:9px;color:var(--accent);margin-top:4px">6 CHIFFRES</span>
           ` : `
@@ -1245,6 +1245,16 @@ function chooseCuveNb(n) {
   saisieCuves   = Array(n).fill(null);
   saisieEditIdx = 0;
   renderSaisie();
+}
+
+function onCuveInputBlur(event, i) {
+  // Ignorer le blur si le focus va vers une autre case de saisie
+  // (relatedTarget = élément qui reçoit le focus)
+  const next = event.relatedTarget;
+  if (next && (next.id?.startsWith('saisie-input-') || next.classList?.contains('cuve-btn'))) {
+    return; // Ne pas valider — le clic sur une case gère la suite
+  }
+  validateCuve(i);
 }
 
 function editCuve(i) {
@@ -1363,7 +1373,7 @@ function renderTrajetAller() {
                 placeholder="000000" value="${val || ''}"
                 oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6)"
                 onkeydown="if(event.key==='Enter')validateCuve(${i})"
-                onblur="validateCuve(${i})"
+                onblur="onCuveInputBlur(event, ${i})"
               >
               <span style="font-size:9px;color:var(--accent);margin-top:4px">6 CHIFFRES</span>
             ` : `
@@ -1666,13 +1676,8 @@ function togglePauseRepair() {
 }
 
 function openNotes() {
-  // Arrêter le chrono, passer en mode saisie de notes
+  // Le chrono CONTINUE de tourner pendant la saisie des notes
   const sp  = state.active.subPhase;
-  const key = 'repair_' + sp.cuveIdx;
-  const c   = state.active.chronos[key];
-  chronoPause(key);
-  if (chronoTick) { clearInterval(chronoTick); chronoTick = null; }
-  document.getElementById('chrono-bar').classList.remove('visible');
   sp.status = 'NOTES';
   saveState();
   renderRepair();
@@ -1680,7 +1685,12 @@ function openNotes() {
 
 function validateNotes() {
   const sp    = state.active.subPhase;
+  const key   = 'repair_' + sp.cuveIdx;
   const notes = document.getElementById('repair-notes')?.value?.trim() || '';
+  // Arrêter le chrono au moment de valider la réparation
+  chronoPause(key);
+  if (chronoTick) { clearInterval(chronoTick); chronoTick = null; }
+  document.getElementById('chrono-bar').classList.remove('visible');
   state.active.cuves[sp.cuveIdx].notes    = notes;
   state.active.cuves[sp.cuveIdx].repaired = true;
   state.active.subPhase = null;
