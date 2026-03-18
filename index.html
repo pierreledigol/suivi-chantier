@@ -1247,32 +1247,34 @@ function chooseCuveNb(n) {
   renderSaisie();
 }
 
+let _blurTimeout = null;
+let _skipBlur = false; // true quand on clique sur une autre case
+
 function onCuveInputBlur(event, i) {
-  // Ignorer le blur si le focus va vers une autre case de saisie
-  // (relatedTarget = élément qui reçoit le focus)
-  const next = event.relatedTarget;
-  if (next && (next.id?.startsWith('saisie-input-') || next.classList?.contains('cuve-btn'))) {
-    return; // Ne pas valider — le clic sur une case gère la suite
-  }
-  validateCuve(i);
+  // Sur iOS/Android relatedTarget est toujours null
+  // On utilise un délai court : si dans ce délai editCuve() est appelé
+  // (clic sur autre case), on annule la validation
+  _blurTimeout = setTimeout(() => {
+    if (!_skipBlur) {
+      validateCuve(i);
+    }
+    _skipBlur = false;
+  }, 150);
 }
 
 function editCuve(i) {
-  // Sur iOS, le clavier s'ouvre UNIQUEMENT si focus() est appelé
-  // directement dans le handler du clic utilisateur, sans re-render DOM.
-  // On met à jour saisieEditIdx puis on focus l'input existant si possible,
-  // sinon on re-render et on focus après.
+  // Annuler le blur en cours (clic depuis une autre case)
+  _skipBlur = true;
+  if (_blurTimeout) { clearTimeout(_blurTimeout); _blurTimeout = null; }
+
   saisieEditIdx = i;
 
   const existingInput = document.getElementById(`saisie-input-${i}`);
   if (existingInput) {
-    // Input déjà dans le DOM → focus direct, pas de re-render
     existingInput.focus();
   } else {
-    // Input pas encore là → re-render puis focus
-    if (document.getElementById('saisie-nb')) renderSaisie(); // contexte page saisie
+    if (document.getElementById('saisie-nb')) renderSaisie();
     else renderTrajetAller();
-    // iOS : focus dans le même tick que le clic
     const inp = document.getElementById(`saisie-input-${i}`);
     if (inp) inp.focus();
   }
