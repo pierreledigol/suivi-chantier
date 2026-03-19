@@ -272,7 +272,7 @@ def db_export_csv():
                  ORDER BY cy.created_at ASC, p.id ASC''')
     rows = c.fetchall(); conn.close()
     out = io.StringIO()
-    w = csv.writer(out, delimiter=';')
+    w = csv.writer(out, delimiter=';', quoting=csv.QUOTE_ALL)
     w.writerow(['Date','Cuves','ID Cycle','Nb cuves','Phase','Durée (HH:MM:SS)','Durée (ms)','Durée (heures)','Notes'])
     prev = None
     for date, nums_json, cid, nb, phase, hms, ms, notes in rows:
